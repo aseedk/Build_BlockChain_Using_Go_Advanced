@@ -2,21 +2,22 @@ package src
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/gob"
 )
 
 // Block struct which contains data of a block in the blockchain
 type Block struct {
-	Hash     []byte
-	Data     []byte
-	PrevHash []byte
-	Nonce    int
+	Hash         []byte
+	Transactions []*Transaction
+	PrevHash     []byte
+	Nonce        int
 }
 
 // CreateBlock function to create a new block in the blockchain
-func CreateBlock(data string, prevHash []byte) *Block {
+func CreateBlock(transactions []*Transaction, prevHash []byte) *Block {
 	// Create a new block with the provided data and previous hash
-	block := &Block{[]byte{}, []byte(data), prevHash, 0}
+	block := &Block{[]byte{}, transactions, prevHash, 0}
 
 	// Create a proof of work for the block
 	proofOfWork := NewProof(block)
@@ -26,6 +27,24 @@ func CreateBlock(data string, prevHash []byte) *Block {
 
 	// Return the block
 	return block
+}
+
+// HashTransactions function to hash the transactions in the block
+func (b *Block) HashTransactions() []byte {
+	// Initialize a new bytes buffer
+	var transactionsHashes [][]byte
+	var transactionHash [32]byte
+
+	// Iterate over the transactions in the block
+	for _, transaction := range b.Transactions {
+		transactionsHashes = append(transactionsHashes, transaction.ID)
+	}
+
+	// Create a new hash with the hashes of the transactions
+	transactionHash = sha256.Sum256(bytes.Join(transactionsHashes, []byte{}))
+
+	// Return the hash of the transactions
+	return transactionHash[:]
 }
 
 // Serialize function to serialize the block

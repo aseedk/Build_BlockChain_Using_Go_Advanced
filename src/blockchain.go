@@ -1,13 +1,16 @@
 package src
 
 import (
-	"errors"
+	"encoding/hex"
 	"fmt"
 	"github.com/dgraph-io/badger"
+	"runtime"
 )
 
 const (
 	dbPath      = "./tmp/blocks"
+	dbFile      = "./tmp/blocks/MANIFEST"
+	genesisData = "First Transaction from Genesis"
 	lastHashKey = "lh"
 )
 
@@ -18,15 +21,19 @@ type BlockChain struct {
 }
 
 // InitBlockChain function to initialize a new blockchain
-func InitBlockChain() *BlockChain {
+func InitBlockChain(address string) *BlockChain {
 	// Initialize variables
 	var (
 		lastHash []byte
-		item     *badger.Item
 		db       *badger.DB
 		opts     badger.Options
 		err      error
 	)
+
+	if FileExists(dbFile) {
+		fmt.Println("Blockchain already exists.")
+		runtime.Goexit()
+	}
 
 	// Set the options for the badger database
 	opts = badger.DefaultOptions(dbPath)
@@ -38,49 +45,84 @@ func InitBlockChain() *BlockChain {
 	// Handle the error
 	Handle(err)
 
-	// Update the database, if no existing blockchain is found, create a new one
-	// If an existing blockchain is found, load it
+	// Update the database with the genesis block
 	err = db.Update(func(txn *badger.Txn) error {
-		// Check if the last hash exists in the database
-		_, err = txn.Get([]byte(lastHashKey))
+		// Initialize coinbase transaction
+		coinbaseTransaction := CoinbaseTransaction(address, genesisData)
 
-		// If the key is not found, create a new blockchain
-		if errors.Is(badger.ErrKeyNotFound, err) {
-			fmt.Println("No existing blockchain found")
-			// Create the genesis block
-			genesis := CreateGenesisBlock()
-			fmt.Println("Genesis proved")
+		// Create the genesis block with the coinbase transaction
+		genesis := CreateGenesisBlock(coinbaseTransaction)
+		fmt.Println("Genesis Created")
 
-			// Set the genesis block in the database
-			err = txn.Set(genesis.Hash, genesis.Serialize())
+		// Set the genesis block in the database
+		err = txn.Set(genesis.Hash, genesis.Serialize())
 
-			// Handle the error
-			Handle(err)
+		// Handle the error
+		Handle(err)
 
-			// Set the last hash in the database
-			err = txn.Set([]byte(lastHashKey), genesis.Hash)
+		// Set the last hash in the database
+		err = txn.Set([]byte(lastHashKey), genesis.Hash)
 
-			// set the last hash to the hash of the genesis block
-			lastHash = genesis.Hash
+		// Set the last hash to the hash of the genesis block
+		lastHash = genesis.Hash
 
-			// return nil or error if any
-			return err
-		} else {
-			// If the key is found, load the blockchain
-			item, err = txn.Get([]byte(lastHashKey))
+		// Return nil or error if any
+		return err
+	})
 
-			// Handle the error
-			Handle(err)
+	// Handle the error
+	Handle(err)
 
-			// Get the last hash from the database and set it to the last hash
-			err = item.Value(func(val []byte) error {
-				lastHash = append([]byte{}, val...)
-				return nil
-			})
+	// Create a new blockchain with the last hash and the database
+	blockchain := BlockChain{lastHash, db}
 
-			// return err if any
-			return err
-		}
+	// Return the blockchain
+	return &blockchain
+}
+
+// ContinueBlockChain function to continue an existing blockchain
+func ContinueBlockChain(_ string) *BlockChain {
+	// Initialize variables
+	var (
+		lastHash []byte
+		db       *badger.DB
+		item     *badger.Item
+		opts     badger.Options
+		err      error
+	)
+
+	if !FileExists(dbFile) {
+		runtime.Goexit()
+	}
+
+	// Set the options for the badger database
+	opts = badger.DefaultOptions(dbPath)
+	opts.Dir = dbPath
+	opts.ValueDir = dbPath
+	opts.Logger = nil
+
+	// Open the badger database
+	db, err = badger.Open(opts)
+
+	// Handle the error
+	Handle(err)
+
+	// Update the database with the genesis block
+	err = db.Update(func(txn *badger.Txn) error {
+		// Get the last hash from the database
+		item, err = txn.Get([]byte(lastHashKey))
+
+		// Handle the error
+		Handle(err)
+
+		// Set the last hash to the hash of the last block
+		err = item.Value(func(val []byte) error {
+			lastHash = append([]byte{}, val...)
+			return nil
+		})
+
+		// Return err if any
+		return err
 	})
 
 	// Handle the error
@@ -94,12 +136,12 @@ func InitBlockChain() *BlockChain {
 }
 
 // CreateGenesisBlock function to create the first block in the blockchain
-func CreateGenesisBlock() *Block {
-	return CreateBlock("Genesis", []byte{})
+func CreateGenesisBlock(coinbase *Transaction) *Block {
+	return CreateBlock([]*Transaction{coinbase}, []byte{})
 }
 
 // AddBlock method to add a new block to the blockchain
-func (blockChain *BlockChain) AddBlock(data string) {
+func (blockChain *BlockChain) AddBlock(transactions []*Transaction) {
 	var (
 		lastHash []byte
 		item     *badger.Item
@@ -128,7 +170,7 @@ func (blockChain *BlockChain) AddBlock(data string) {
 	Handle(err)
 
 	// Create a new block with the data and the last hash
-	newBlock := CreateBlock(data, lastHash)
+	newBlock := CreateBlock(transactions, lastHash)
 
 	// Update the database with the new block
 	err = blockChain.Database.Update(func(txn *badger.Txn) error {
@@ -147,6 +189,103 @@ func (blockChain *BlockChain) AddBlock(data string) {
 		// return nil or error if any
 		return err
 	})
+}
+
+// FindUnspentTransactions function to find all the unspent transactions in the blockchain
+func (blockChain *BlockChain) FindUnspentTransactions(address string) []Transaction {
+	// Initialize variables
+	var (
+		unspentTransactions     []Transaction
+		spentTransactionOutputs = make(map[string][]int)
+		iterator                = blockChain.Iterator()
+	)
+
+	for {
+		block := iterator.Next()
+		for _, transaction := range block.Transactions {
+			transactionId := hex.EncodeToString(transaction.ID)
+		Outputs:
+			for outputIndex, output := range transaction.Outputs {
+				if spentTransactionOutputs[transactionId] != nil {
+					for _, spentOutput := range spentTransactionOutputs[transactionId] {
+						if spentOutput == outputIndex {
+							continue Outputs
+						}
+					}
+				}
+
+				if output.CanBeUnlocked(address) {
+					unspentTransactions = append(unspentTransactions, *transaction)
+				}
+			}
+
+			if !transaction.IsCoinbase() {
+				for _, input := range transaction.Inputs {
+					if input.CanUnlock(address) {
+						inputId := hex.EncodeToString(input.ID)
+						spentTransactionOutputs[inputId] = append(spentTransactionOutputs[inputId], input.Out)
+					}
+				}
+			}
+		}
+
+		if len(block.PrevHash) == 0 {
+			break
+		}
+	}
+
+	// Return the unspent transactions
+	return unspentTransactions
+}
+
+// FindSpendableOutputs function to find the spendable outputs in the blockchain
+func (blockChain *BlockChain) FindSpendableOutputs(address string, amount int) (int, map[string][]int) {
+	// Initialize variables
+	var (
+		unspentOutputs      = make(map[string][]int)
+		unspentTransactions = blockChain.FindUnspentTransactions(address)
+		accumulated         = 0
+	)
+
+Work:
+	for _, transaction := range unspentTransactions {
+		transactionId := hex.EncodeToString(transaction.ID)
+
+		for outputIndex, output := range transaction.Outputs {
+			if output.CanBeUnlocked(address) && accumulated < amount {
+				accumulated += output.Value
+				unspentOutputs[transactionId] = append(unspentOutputs[transactionId], outputIndex)
+
+				if accumulated >= amount {
+					break Work
+				}
+			}
+		}
+	}
+
+	// Iterate over the unspent transactions and find the spendable outputs
+	return accumulated, unspentOutputs
+}
+
+// FindUnspentTransactionOutputs function to find all the unspent transaction outputs in the blockchain
+func (blockChain *BlockChain) FindUnspentTransactionOutputs(address string) []TxOutput {
+	var UnspentTransactionsOutputs []TxOutput
+
+	// Find all the unspent transactions in the blockchain
+	unspentTransactions := blockChain.FindUnspentTransactions(address)
+
+	// Iterate over the unspent transactions and find the unspent transaction outputs
+	for _, transaction := range unspentTransactions {
+		// Iterate over the outputs of the transaction
+		for _, output := range transaction.Outputs {
+			if output.CanBeUnlocked(address) {
+				UnspentTransactionsOutputs = append(UnspentTransactionsOutputs, output)
+			}
+		}
+	}
+
+	// Return the unspent transactions outputs
+	return UnspentTransactionsOutputs
 }
 
 // BlockChainIterator struct to iterate over the blockchain
