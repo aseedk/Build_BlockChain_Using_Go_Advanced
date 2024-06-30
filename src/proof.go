@@ -10,7 +10,7 @@ import (
 )
 
 // Difficulty is the number of leading zeros that must be present in the hash of a block
-const Difficulty = 18
+const Difficulty = 12
 
 // ProofOfWork struct which contains a block and a target
 type ProofOfWork struct {
@@ -112,9 +112,7 @@ func ToHex(num int64) []byte {
 
 	// Write the integer to the buffer in big endian format
 	err := binary.Write(buff, binary.BigEndian, num)
-	if err != nil {
-		panic(err)
-	}
+	Handle(err)
 
 	// Return the bytes
 	return buff.Bytes()

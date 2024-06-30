@@ -3,25 +3,20 @@ package main
 import (
 	"Build_BlockChain_Using_Go_Advanced/src"
 	"fmt"
-	"strconv"
+	"github.com/dgraph-io/badger"
+	"os"
 )
 
 func main() {
+	defer os.Exit(0)
 	blockChain := src.InitBlockChain()
+	defer func(Database *badger.DB) {
+		err := Database.Close()
+		if err != nil {
+			fmt.Println(err)
+		}
+	}(blockChain.Database)
 
-	blockChain.AddBlock("First Block after Genesis")
-	blockChain.AddBlock("Second Block after Genesis")
-	blockChain.AddBlock("Third Block after Genesis")
-
-	for _, block := range blockChain.Blocks {
-		fmt.Println("------------------------------------------------------------------")
-		fmt.Printf("Previous Hash: %x\n", block.PrevHash)
-		fmt.Printf("Data in Block: %s\n", block.Data)
-		fmt.Printf("Hash: %x\n", block.Hash)
-
-		pow := src.NewProof(block)
-		fmt.Printf("PoW: %s\n", strconv.FormatBool(pow.Validate()))
-		fmt.Println("------------------------------------------------------------------")
-		fmt.Println()
-	}
+	commandLine := src.CommandLine{Blockchain: blockChain}
+	commandLine.Run()
 }
