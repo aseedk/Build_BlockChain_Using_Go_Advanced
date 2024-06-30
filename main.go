@@ -3,6 +3,7 @@ package main
 import (
 	"Build_BlockChain_Using_Go_Advanced/src"
 	"fmt"
+	"strconv"
 )
 
 func main() {
@@ -17,6 +18,9 @@ func main() {
 		fmt.Printf("Previous Hash: %x\n", block.PrevHash)
 		fmt.Printf("Data in Block: %s\n", block.Data)
 		fmt.Printf("Hash: %x\n", block.Hash)
+
+		pow := src.NewProof(block)
+		fmt.Printf("PoW: %s\n", strconv.FormatBool(pow.Validate()))
 		fmt.Println("------------------------------------------------------------------")
 		fmt.Println()
 	}
