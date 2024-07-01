@@ -108,14 +108,12 @@ func (tx *Transaction) Sign(privateKey ecdsa.PrivateKey, prevTXs map[string]Tran
 
 		// Sign the transaction
 		func() {
-			if privateKey.PublicKey.Curve == nil {
-				return
-			}
 			defer func() {
 				if r := recover(); r != nil {
 					fmt.Println("Recovered in f", r)
 				}
 			}()
+
 			r, s, err := ecdsa.Sign(rand.Reader, &privateKey, txCopy.ID)
 			// Handle the error
 			Handle(err)
@@ -244,7 +242,7 @@ func (tx *Transaction) String() string {
 }
 
 // NewTransaction function to create a new transaction
-func NewTransaction(from, to string, amount int, blockchain *BlockChain) *Transaction {
+func NewTransaction(from, to string, amount int, UTXO *UTXOSet) *Transaction {
 	// Initialize variables
 	var (
 		inputs  []TxInput
@@ -263,7 +261,7 @@ func NewTransaction(from, to string, amount int, blockchain *BlockChain) *Transa
 	// Get the public key hash of the from wallet
 	fromPublicKeyHash := wallet.PublicKeyHash(fromWallet.PublicKey)
 
-	acc, validOutputs := blockchain.FindSpendableOutputs(fromPublicKeyHash, amount)
+	acc, validOutputs := UTXO.FindSpendableOutputs(fromPublicKeyHash, amount)
 
 	if acc < amount {
 		log.Panic("Error: Not enough funds")
@@ -288,7 +286,7 @@ func NewTransaction(from, to string, amount int, blockchain *BlockChain) *Transa
 	tx := Transaction{nil, inputs, outputs}
 	tx.ID = tx.Hash()
 
-	blockchain.SignTransaction(&tx, fromWallet.PrivateKey)
+	UTXO.Blockchain.SignTransaction(&tx, fromWallet.PrivateKey)
 
 	return &tx
 }

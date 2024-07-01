@@ -106,6 +106,7 @@ func NewKeyPair() (ecdsa.PrivateKey, []byte) {
 
 	// Generate a privateKey key using the curve and the random reader
 	privateKey, err := ecdsa.GenerateKey(curve, rand.Reader)
+	privateKey.PublicKey.Curve = curve
 
 	// Handle the error
 	if err != nil {

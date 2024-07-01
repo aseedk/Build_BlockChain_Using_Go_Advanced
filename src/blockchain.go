@@ -146,7 +146,7 @@ func CreateGenesisBlock(coinbase *Transaction) *Block {
 }
 
 // AddBlock method to add a new block to the blockchain
-func (blockChain *BlockChain) AddBlock(transactions []*Transaction) {
+func (blockChain *BlockChain) AddBlock(transactions []*Transaction) *Block {
 	var (
 		lastHash []byte
 		val      []byte
@@ -197,15 +197,17 @@ func (blockChain *BlockChain) AddBlock(transactions []*Transaction) {
 		// return nil or error if any
 		return err
 	})
+
+	return newBlock
 }
 
-// FindUnspentTransactions function to find all the unspent transactions in the blockchain
-func (blockChain *BlockChain) FindUnspentTransactions(publicKeyHash []byte) []Transaction {
+// FindUTXOs function to find all the unspent transactions in the blockchain
+func (blockChain *BlockChain) FindUTXOs() map[string]TxOutputs {
 	// Initialize variables
 	var (
-		unspentTransactions     []Transaction
-		spentTransactionOutputs = make(map[string][]int)
-		iterator                = blockChain.Iterator()
+		UTXOs     = make(map[string]TxOutputs)
+		spentTXOs = make(map[string][]int)
+		iterator  = blockChain.Iterator()
 	)
 
 	for {
@@ -214,25 +216,23 @@ func (blockChain *BlockChain) FindUnspentTransactions(publicKeyHash []byte) []Tr
 			transactionId := hex.EncodeToString(transaction.ID)
 		Outputs:
 			for outputIndex, output := range transaction.Outputs {
-				if spentTransactionOutputs[transactionId] != nil {
-					for _, spentOutput := range spentTransactionOutputs[transactionId] {
+				if spentTXOs[transactionId] != nil {
+					for _, spentOutput := range spentTXOs[transactionId] {
 						if spentOutput == outputIndex {
 							continue Outputs
 						}
 					}
 				}
 
-				if output.IsLockedWithKey(publicKeyHash) {
-					unspentTransactions = append(unspentTransactions, *transaction)
-				}
+				outs := UTXOs[transactionId]
+				outs.Outputs = append(outs.Outputs, output)
+				UTXOs[transactionId] = outs
 			}
 
 			if !transaction.IsCoinbase() {
 				for _, input := range transaction.Inputs {
-					if input.UsesKey(publicKeyHash) {
-						inputId := hex.EncodeToString(input.ID)
-						spentTransactionOutputs[inputId] = append(spentTransactionOutputs[inputId], input.Out)
-					}
+					inputId := hex.EncodeToString(input.ID)
+					spentTXOs[inputId] = append(spentTXOs[inputId], input.Out)
 				}
 			}
 		}
@@ -243,57 +243,7 @@ func (blockChain *BlockChain) FindUnspentTransactions(publicKeyHash []byte) []Tr
 	}
 
 	// Return the unspent transactions
-	return unspentTransactions
-}
-
-// FindSpendableOutputs function to find the spendable outputs in the blockchain
-func (blockChain *BlockChain) FindSpendableOutputs(publicKeyHash []byte, amount int) (int, map[string][]int) {
-	// Initialize variables
-	var (
-		unspentOutputs      = make(map[string][]int)
-		unspentTransactions = blockChain.FindUnspentTransactions(publicKeyHash)
-		accumulated         = 0
-	)
-
-Work:
-	for _, transaction := range unspentTransactions {
-		transactionId := hex.EncodeToString(transaction.ID)
-
-		for outputIndex, output := range transaction.Outputs {
-			if output.IsLockedWithKey(publicKeyHash) && accumulated < amount {
-				accumulated += output.Value
-				unspentOutputs[transactionId] = append(unspentOutputs[transactionId], outputIndex)
-
-				if accumulated >= amount {
-					break Work
-				}
-			}
-		}
-	}
-
-	// Iterate over the unspent transactions and find the spendable outputs
-	return accumulated, unspentOutputs
-}
-
-// FindUnspentTransactionOutputs function to find all the unspent transaction outputs in the blockchain
-func (blockChain *BlockChain) FindUnspentTransactionOutputs(publicKeyHash []byte) []TxOutput {
-	var UnspentTransactionsOutputs []TxOutput
-
-	// Find all the unspent transactions in the blockchain
-	unspentTransactions := blockChain.FindUnspentTransactions(publicKeyHash)
-
-	// Iterate over the unspent transactions and find the unspent transaction outputs
-	for _, transaction := range unspentTransactions {
-		// Iterate over the outputs of the transaction
-		for _, output := range transaction.Outputs {
-			if output.IsLockedWithKey(publicKeyHash) {
-				UnspentTransactionsOutputs = append(UnspentTransactionsOutputs, output)
-			}
-		}
-	}
-
-	// Return the unspent transactions outputs
-	return UnspentTransactionsOutputs
+	return UTXOs
 }
 
 // FindTransaction function to find a transaction in the blockchain
