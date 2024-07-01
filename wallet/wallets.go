@@ -2,12 +2,13 @@ package wallet
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 )
 
-const walletFile = "./tmp/wallets.data"
+const walletFile = "./tmp/wallets_%s.data"
 
 // Wallets struct which contains the wallets
 type Wallets struct {
@@ -15,11 +16,11 @@ type Wallets struct {
 }
 
 // CreateWallets function to create a new Wallets struct
-func CreateWallets() (*Wallets, error) {
+func CreateWallets(nodeId string) (*Wallets, error) {
 	wallets := Wallets{}
 	wallets.Wallets = make(map[string]*Wallet)
 
-	err := wallets.LoadFile()
+	err := wallets.LoadFile(nodeId)
 
 	return &wallets, err
 }
@@ -49,11 +50,12 @@ func (ws *Wallets) GetWallet(address string) Wallet {
 }
 
 // SaveFile function to save the wallets to a file
-func (ws *Wallets) SaveFile() {
+func (ws *Wallets) SaveFile(nodeId string) {
 	jsonData, err := json.Marshal(ws)
 	if err != nil {
 		log.Panic(err)
 	}
+	walletFile := fmt.Sprintf(walletFile, nodeId)
 
 	err = ioutil.WriteFile(walletFile, jsonData, 0644)
 	if err != nil {
@@ -62,11 +64,11 @@ func (ws *Wallets) SaveFile() {
 }
 
 // LoadFile function to load the wallets from a file
-func (ws *Wallets) LoadFile() error {
+func (ws *Wallets) LoadFile(nodeId string) error {
+	walletFile := fmt.Sprintf(walletFile, nodeId)
 	if _, err := ioutil.ReadFile(walletFile); os.IsNotExist(err) {
 		return err
 	}
-
 	var wallets Wallets
 
 	content, err := ioutil.ReadFile(walletFile)

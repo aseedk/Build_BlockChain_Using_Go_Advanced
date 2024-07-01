@@ -3,25 +3,28 @@ package src
 import (
 	"bytes"
 	"encoding/gob"
+	"time"
 )
 
 // Block struct which contains data of a block in the blockchain
 type Block struct {
+	Timestamp    int64
 	Hash         []byte
 	Transactions []*Transaction
 	PrevHash     []byte
 	Nonce        int
+	Height       int
 }
 
 // CreateGenesisBlock function to create the first block in the blockchain
 func CreateGenesisBlock(coinbase *Transaction) *Block {
-	return CreateBlock([]*Transaction{coinbase}, []byte{})
+	return CreateBlock([]*Transaction{coinbase}, []byte{}, 0)
 }
 
 // CreateBlock function to create a new block in the blockchain
-func CreateBlock(transactions []*Transaction, prevHash []byte) *Block {
+func CreateBlock(transactions []*Transaction, prevHash []byte, height int) *Block {
 	// Create a new block with the provided data and previous hash
-	block := &Block{[]byte{}, transactions, prevHash, 0}
+	block := &Block{time.Now().Unix(), []byte{}, transactions, prevHash, 0, height}
 
 	// Create a proof of work for the block
 	proofOfWork := NewProof(block)

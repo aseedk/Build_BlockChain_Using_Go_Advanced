@@ -6,12 +6,15 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/dgraph-io/badger"
+	"log"
+	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 const (
-	dbPath      = "./tmp/blocks"
-	dbFile      = "./tmp/blocks/MANIFEST"
+	dbPath      = "./tmp/blocks_%s"
 	genesisData = "First Transaction from Genesis"
 	lastHashKey = "lh"
 )
@@ -23,7 +26,7 @@ type BlockChain struct {
 }
 
 // InitBlockChain function to initialize a new blockchain
-func InitBlockChain(address string) *BlockChain {
+func InitBlockChain(address, nodeId string) *BlockChain {
 	// Initialize variables
 	var (
 		lastHash []byte
@@ -31,19 +34,21 @@ func InitBlockChain(address string) *BlockChain {
 		opts     badger.Options
 		err      error
 	)
-
-	if FileExists(dbFile) {
+	fmt.Println("NodeId", nodeId)
+	dbFile := fmt.Sprintf(dbPath, nodeId)
+	fmt.Println("DB File: ", dbFile)
+	if DBexists(dbFile) {
 		fmt.Println("Blockchain already exists.")
 		runtime.Goexit()
 	}
 
 	// Set the options for the badger database
 	opts = badger.DefaultOptions
-	opts.Dir = dbPath
-	opts.ValueDir = dbPath
+	opts.Dir = dbFile
+	opts.ValueDir = dbFile
 
 	// Open the badger database
-	db, err = badger.Open(opts)
+	db, err = openDb(dbFile, opts)
 
 	// Handle the error
 	Handle(err)
@@ -84,7 +89,7 @@ func InitBlockChain(address string) *BlockChain {
 }
 
 // ContinueBlockChain function to continue an existing blockchain
-func ContinueBlockChain(_ string) *BlockChain {
+func ContinueBlockChain(nodeId string) *BlockChain {
 	// Initialize variables
 	var (
 		lastHash []byte
@@ -93,18 +98,19 @@ func ContinueBlockChain(_ string) *BlockChain {
 		opts     badger.Options
 		err      error
 	)
-
-	if !FileExists(dbFile) {
+	path := fmt.Sprintf(dbPath, nodeId)
+	if !DBexists(path) {
+		fmt.Println("No existing blockchain found, create one!")
 		runtime.Goexit()
 	}
 
 	// Set the options for the badger database
 	opts = badger.DefaultOptions
-	opts.Dir = dbPath
-	opts.ValueDir = dbPath
+	opts.Dir = path
+	opts.ValueDir = path
 
 	// Open the badger database
-	db, err = badger.Open(opts)
+	db, err = openDb(path, opts)
 
 	// Handle the error
 	Handle(err)
@@ -137,13 +143,117 @@ func ContinueBlockChain(_ string) *BlockChain {
 	return &blockchain
 }
 
-// AddBlock method to add a new block to the blockchain
-func (blockChain *BlockChain) AddBlock(transactions []*Transaction) *Block {
+// AddBlock function to add a new block to the blockchain
+func (blockChain *BlockChain) AddBlock(block *Block) {
+	err := blockChain.Database.Update(func(txn *badger.Txn) error {
+		if _, err := txn.Get(block.Hash); err == nil {
+			return nil
+		}
+
+		blockData := block.Serialize()
+		err := txn.Set(block.Hash, blockData)
+		Handle(err)
+
+		item, err := txn.Get([]byte(lastHashKey))
+		Handle(err)
+		lastHash, _ := item.Value()
+
+		item, err = txn.Get(lastHash)
+		Handle(err)
+
+		lastBlockData, _ := item.Value()
+		lastBlock := Deserialize(lastBlockData)
+
+		if block.Height > lastBlock.Height {
+			err = txn.Set([]byte(lastHashKey), block.Hash)
+			Handle(err)
+			blockChain.LastHash = block.Hash
+		}
+
+		return nil
+	})
+	Handle(err)
+}
+
+// GetBlock function to get a block from the blockchain
+func (blockChain *BlockChain) GetBlock(hash []byte) (Block, error) {
+	var block Block
+
+	err := blockChain.Database.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(hash)
+		if err != nil {
+			return fmt.Errorf("block not found: %s", err)
+		}
+
+		encodedBlock, err := item.Value()
+		block = *Deserialize(encodedBlock)
+		return nil
+	})
+
+	if err != nil {
+		return block, err
+	}
+
+	return block, nil
+}
+
+// GetBlockHashes function to get the hashes of all the blocks in the blockchain
+func (blockChain *BlockChain) GetBlockHashes() [][]byte {
 	var (
-		lastHash []byte
-		item     *badger.Item
-		err      error
+		iterator = blockChain.Iterator()
+		hashes   [][]byte
 	)
+
+	for {
+		block := iterator.Next()
+		hashes = append(hashes, block.Hash)
+
+		if len(block.PrevHash) == 0 {
+			break
+		}
+	}
+
+	return hashes
+}
+
+// GetBestHeight function to get the height of the last block in the blockchain
+func (blockChain *BlockChain) GetBestHeight() int {
+	var lastBlock Block
+
+	err := blockChain.Database.View(func(txn *badger.Txn) error {
+		item, err := txn.Get([]byte(lastHashKey))
+		Handle(err)
+
+		lastHash, _ := item.Value()
+		item, err = txn.Get(lastHash)
+		Handle(err)
+
+		lastBlockData, _ := item.Value()
+
+		lastBlock = *Deserialize(lastBlockData)
+
+		return nil
+	})
+
+	Handle(err)
+
+	return lastBlock.Height
+}
+
+// MineBlock method to add a new block to the blockchain
+func (blockChain *BlockChain) MineBlock(transactions []*Transaction) *Block {
+	var (
+		lastHash   []byte
+		lastHeight int
+		item       *badger.Item
+		err        error
+	)
+
+	for _, tx := range transactions {
+		if !blockChain.VerifyTransaction(tx) {
+			fmt.Println("Invalid transaction")
+		}
+	}
 
 	// Read the last hash from the database
 	err = blockChain.Database.View(func(txn *badger.Txn) error {
@@ -156,6 +266,13 @@ func (blockChain *BlockChain) AddBlock(transactions []*Transaction) *Block {
 		// set the last hash to the hash of the last block
 		lastHash, err = item.Value()
 
+		item, err = txn.Get(lastHash)
+		Handle(err)
+
+		lastBlockData, _ := item.Value()
+		lastBlock := Deserialize(lastBlockData)
+		lastHeight = lastBlock.Height
+
 		// return err if any
 		return err
 	})
@@ -164,7 +281,7 @@ func (blockChain *BlockChain) AddBlock(transactions []*Transaction) *Block {
 	Handle(err)
 
 	// Create a new block with the data and the last hash
-	newBlock := CreateBlock(transactions, lastHash)
+	newBlock := CreateBlock(transactions, lastHash, lastHeight+1)
 
 	// Update the database with the new block
 	err = blockChain.Database.Update(func(txn *badger.Txn) error {
@@ -317,4 +434,48 @@ func (blockChain *BlockChain) Iterator() *BlockChainIterator {
 
 	// Return the iterator
 	return iterator
+}
+
+// retry function to retry a function if it fails
+func retry(dir string, originalOpts badger.Options) (*badger.DB, error) {
+	lockPath := filepath.Join(dir, "LOCK")
+	if err := os.Remove(lockPath); err != nil {
+		return nil, fmt.Errorf("removing lock: %s", err)
+	}
+
+	// Set the options for the badger database
+	retryOpts := originalOpts
+	retryOpts.Truncate = true
+
+	// Open the badger database
+	db, err := badger.Open(retryOpts)
+
+	// Handle the error
+	Handle(err)
+
+	// Return the database
+	return db, err
+}
+
+// openDb function to open the database
+func openDb(dir string, opts badger.Options) (*badger.DB, error) {
+	db, err := badger.Open(opts)
+	if err != nil {
+		if strings.Contains(err.Error(), "LOCK") {
+			if db, err = retry(dir, opts); err == nil {
+				log.Println("database unlocked, retrying open")
+				return db, nil
+			}
+		}
+		return nil, err
+	}
+	return db, nil
+}
+
+func DBexists(path string) bool {
+	if _, err := os.Stat(path + "/MANIFEST"); os.IsNotExist(err) {
+		return false
+	}
+
+	return true
 }

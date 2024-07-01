@@ -26,7 +26,7 @@ const (
 var (
 	nodeAddress     string
 	minerAddress    string
-	knownNodes      = []string{"localhost:3000"}
+	KnownNodes      = []string{"localhost:3000"}
 	blocksInTransit [][]byte
 	memoryPool      = make(map[string]src.Transaction)
 )
@@ -99,8 +99,8 @@ func StartServer(nodeID, minerAddress string) {
 
 	go CloseDB(chain)
 
-	if nodeAddress != knownNodes[0] {
-		SendVersion(knownNodes[0], chain)
+	if nodeAddress != KnownNodes[0] {
+		SendVersion(KnownNodes[0], chain)
 	}
 
 	for {
@@ -150,7 +150,7 @@ func HandleConnection(conn net.Conn, chain *src.BlockChain) {
 
 // SendAddress function to send the address
 func SendAddress(address string) {
-	nodes := Address{knownNodes}
+	nodes := Address{KnownNodes}
 	nodes.AddressList = append(nodes.AddressList, nodeAddress)
 	payload := GobEncode(nodes)
 	request := append(CommandToBytes("addr"), payload...)
@@ -158,8 +158,8 @@ func SendAddress(address string) {
 }
 
 // SendBlock function to send the block
-func SendBlock(address string, block []byte) {
-	data := Block{nodeAddress, block}
+func SendBlock(address string, block *src.Block) {
+	data := Block{nodeAddress, block.Serialize()}
 	payload := GobEncode(data)
 	request := append(CommandToBytes("block"), payload...)
 	SendData(address, request)
@@ -189,6 +189,13 @@ func SendVersion(addr string, chain *src.BlockChain) {
 	SendData(addr, request)
 }
 
+// SendGetBlocks function to send the get blocks
+func SendGetBlocks(address string) {
+	payload := GobEncode(GetBlocks{nodeAddress})
+	request := append(CommandToBytes("getblocks"), payload...)
+	SendData(address, request)
+}
+
 // SendGetData function to send the data
 func SendGetData(address, kind string, id []byte) {
 	payload := GobEncode(GetData{nodeAddress, kind, id})
@@ -207,8 +214,8 @@ func HandleAddress(request []byte) {
 	if err != nil {
 		log.Panic(err)
 	}
-	knownNodes = append(knownNodes, payload.AddressList...)
-	fmt.Printf("There are %d known nodes now!\n", len(knownNodes))
+	KnownNodes = append(KnownNodes, payload.AddressList...)
+	fmt.Printf("There are %d known nodes now!\n", len(KnownNodes))
 	RequestBlocks()
 }
 
@@ -302,7 +309,7 @@ func HandleVersion(request []byte, chain *src.BlockChain) {
 	}
 
 	if !NodeIsKnown(payload.AddressFrom) {
-		knownNodes = append(knownNodes, payload.AddressFrom)
+		KnownNodes = append(KnownNodes, payload.AddressFrom)
 	}
 }
 
@@ -321,8 +328,8 @@ func HandleTx(request []byte, chain *src.BlockChain) {
 	tx := src.DeserializeTransaction(txData)
 	memoryPool[hex.EncodeToString(tx.ID)] = tx
 
-	if nodeAddress == knownNodes[0] {
-		for _, node := range knownNodes {
+	if nodeAddress == KnownNodes[0] {
+		for _, node := range KnownNodes {
 			if node != nodeAddress && node != payload.AddressFrom {
 				SendInventory(node, "tx", [][]byte{tx.ID})
 			}
@@ -400,7 +407,7 @@ func MineTransactions(chain *src.BlockChain) {
 		delete(memoryPool, txID)
 	}
 
-	for _, node := range knownNodes {
+	for _, node := range KnownNodes {
 		if node != nodeAddress {
 			SendInventory(node, "block", [][]byte{newBlock.Hash})
 		}
@@ -413,7 +420,7 @@ func MineTransactions(chain *src.BlockChain) {
 
 // NodeIsKnown function to check if the node is known
 func NodeIsKnown(addr string) bool {
-	for _, node := range knownNodes {
+	for _, node := range KnownNodes {
 		if node == addr {
 			return true
 		}
@@ -427,12 +434,12 @@ func SendData(addr string, data []byte) {
 	if err != nil {
 		fmt.Printf("%s is not available\n", addr)
 		var updateNodes []string
-		for _, node := range knownNodes {
+		for _, node := range KnownNodes {
 			if node != addr {
 				updateNodes = append(updateNodes, node)
 			}
 		}
-		knownNodes = updateNodes
+		KnownNodes = updateNodes
 	}
 
 	defer func(conn net.Conn) {
@@ -481,7 +488,7 @@ func GobEncode(data interface{}) []byte {
 
 // RequestBlocks function to request the blocks
 func RequestBlocks() {
-	for _, node := range knownNodes {
+	for _, node := range KnownNodes {
 		SendGetBlocks(node)
 	}
 }

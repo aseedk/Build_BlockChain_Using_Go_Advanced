@@ -222,24 +222,15 @@ func (tx *Transaction) String() string {
 }
 
 // NewTransaction function to create a new transaction
-func NewTransaction(from, to string, amount int, UTXO *UTXOSet) *Transaction {
+func NewTransaction(w *wallet.Wallet, to string, amount int, UTXO *UTXOSet) *Transaction {
 	// Initialize variables
 	var (
 		inputs  []TxInput
 		outputs []TxOutput
 	)
 
-	// Create Wallet
-	wallets, err := wallet.CreateWallets()
-
-	// Handle the error
-	Handle(err)
-
-	// Get the wallet from the wallets
-	fromWallet := wallets.GetWallet(from)
-
 	// Get the public key hash of the from wallet
-	fromPublicKeyHash := wallet.PublicKeyHash(fromWallet.PublicKey)
+	fromPublicKeyHash := wallet.PublicKeyHash(w.PublicKey)
 
 	acc, validOutputs := UTXO.FindSpendableOutputs(fromPublicKeyHash, amount)
 
@@ -252,11 +243,11 @@ func NewTransaction(from, to string, amount int, UTXO *UTXOSet) *Transaction {
 		Handle(err)
 
 		for _, out := range outs {
-			input := TxInput{txID, out, nil, fromWallet.PublicKey}
+			input := TxInput{txID, out, nil, w.PublicKey}
 			inputs = append(inputs, input)
 		}
 	}
-
+	from := fmt.Sprintf("%s", w.Address())
 	outputs = append(outputs, *NewTxOutput(amount, to))
 
 	if acc > amount {
@@ -266,7 +257,7 @@ func NewTransaction(from, to string, amount int, UTXO *UTXOSet) *Transaction {
 	tx := Transaction{nil, inputs, outputs}
 	tx.ID = tx.Hash()
 
-	UTXO.Blockchain.SignTransaction(&tx, fromWallet.PrivateKey)
+	UTXO.Blockchain.SignTransaction(&tx, w.PrivateKey)
 
 	return &tx
 }
@@ -289,4 +280,20 @@ func CoinbaseTransaction(to, data string) *Transaction {
 
 	// Return the transaction
 	return &tx
+}
+
+// DeserializeTransaction function to deserialize the transaction
+func DeserializeTransaction(data []byte) Transaction {
+	// Initialize a new transaction
+	var transaction Transaction
+
+	// Create a new gob decoder with the data
+	decoder := gob.NewDecoder(bytes.NewReader(data))
+
+	// Decode the transaction
+	err := decoder.Decode(&transaction)
+	Handle(err)
+
+	// Return the transaction
+	return transaction
 }
