@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"Build_BlockChain_Using_Go_Advanced/src"
+	"Build_BlockChain_Using_Go_Advanced/blockchain"
 	"Build_BlockChain_Using_Go_Advanced/wallet"
 	"flag"
 	"fmt"
