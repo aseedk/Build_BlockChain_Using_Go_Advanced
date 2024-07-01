@@ -36,6 +36,11 @@ func (cli *CommandLine) ValidateArgs() {
 
 // GetBalance function to get the balance of an address
 func (cli *CommandLine) GetBalance(address string) {
+	if !wallet.ValidateAddress(address) {
+		fmt.Println("Address is not valid")
+		runtime.Goexit()
+	}
+
 	// Initialize the blockchain
 	blockchain := src.ContinueBlockChain(address)
 
@@ -50,8 +55,12 @@ func (cli *CommandLine) GetBalance(address string) {
 	// Initialize the balance
 	balance := 0
 
+	// Get the public key hash from the address
+	publicKeyHash := wallet.Base58Decode([]byte(address))
+	publicKeyHash = publicKeyHash[1 : len(publicKeyHash)-4]
+
 	// Find the unspent transaction outputs for the address
-	UTXOs := blockchain.FindUnspentTransactionOutputs(address)
+	UTXOs := blockchain.FindUnspentTransactionOutputs(publicKeyHash)
 
 	for _, out := range UTXOs {
 		balance += out.Value
@@ -93,6 +102,10 @@ func (cli *CommandLine) PrintChain() {
 
 		pow := src.NewProof(block)
 		fmt.Printf("PoW: %s\n", strconv.FormatBool(pow.Validate()))
+
+		for _, tx := range block.Transactions {
+			fmt.Println(tx)
+		}
 		fmt.Println("------------------------------------------------------------------")
 		fmt.Println()
 
@@ -111,9 +124,10 @@ func (cli *CommandLine) Send(from, to string, amount int) {
 			fmt.Println(err)
 		}
 	}(blockchain.Database)
-
 	tx := src.NewTransaction(from, to, amount, blockchain)
+
 	blockchain.AddBlock([]*src.Transaction{tx})
+
 	fmt.Println("Success!")
 }
 

@@ -1,6 +1,8 @@
 package src
 
 import (
+	"bytes"
+	"crypto/ecdsa"
 	"encoding/hex"
 	"fmt"
 	"github.com/dgraph-io/badger"
@@ -198,7 +200,7 @@ func (blockChain *BlockChain) AddBlock(transactions []*Transaction) {
 }
 
 // FindUnspentTransactions function to find all the unspent transactions in the blockchain
-func (blockChain *BlockChain) FindUnspentTransactions(address string) []Transaction {
+func (blockChain *BlockChain) FindUnspentTransactions(publicKeyHash []byte) []Transaction {
 	// Initialize variables
 	var (
 		unspentTransactions     []Transaction
@@ -220,14 +222,14 @@ func (blockChain *BlockChain) FindUnspentTransactions(address string) []Transact
 					}
 				}
 
-				if output.CanBeUnlocked(address) {
+				if output.IsLockedWithKey(publicKeyHash) {
 					unspentTransactions = append(unspentTransactions, *transaction)
 				}
 			}
 
 			if !transaction.IsCoinbase() {
 				for _, input := range transaction.Inputs {
-					if input.CanUnlock(address) {
+					if input.UsesKey(publicKeyHash) {
 						inputId := hex.EncodeToString(input.ID)
 						spentTransactionOutputs[inputId] = append(spentTransactionOutputs[inputId], input.Out)
 					}
@@ -245,11 +247,11 @@ func (blockChain *BlockChain) FindUnspentTransactions(address string) []Transact
 }
 
 // FindSpendableOutputs function to find the spendable outputs in the blockchain
-func (blockChain *BlockChain) FindSpendableOutputs(address string, amount int) (int, map[string][]int) {
+func (blockChain *BlockChain) FindSpendableOutputs(publicKeyHash []byte, amount int) (int, map[string][]int) {
 	// Initialize variables
 	var (
 		unspentOutputs      = make(map[string][]int)
-		unspentTransactions = blockChain.FindUnspentTransactions(address)
+		unspentTransactions = blockChain.FindUnspentTransactions(publicKeyHash)
 		accumulated         = 0
 	)
 
@@ -258,7 +260,7 @@ Work:
 		transactionId := hex.EncodeToString(transaction.ID)
 
 		for outputIndex, output := range transaction.Outputs {
-			if output.CanBeUnlocked(address) && accumulated < amount {
+			if output.IsLockedWithKey(publicKeyHash) && accumulated < amount {
 				accumulated += output.Value
 				unspentOutputs[transactionId] = append(unspentOutputs[transactionId], outputIndex)
 
@@ -274,17 +276,17 @@ Work:
 }
 
 // FindUnspentTransactionOutputs function to find all the unspent transaction outputs in the blockchain
-func (blockChain *BlockChain) FindUnspentTransactionOutputs(address string) []TxOutput {
+func (blockChain *BlockChain) FindUnspentTransactionOutputs(publicKeyHash []byte) []TxOutput {
 	var UnspentTransactionsOutputs []TxOutput
 
 	// Find all the unspent transactions in the blockchain
-	unspentTransactions := blockChain.FindUnspentTransactions(address)
+	unspentTransactions := blockChain.FindUnspentTransactions(publicKeyHash)
 
 	// Iterate over the unspent transactions and find the unspent transaction outputs
 	for _, transaction := range unspentTransactions {
 		// Iterate over the outputs of the transaction
 		for _, output := range transaction.Outputs {
-			if output.CanBeUnlocked(address) {
+			if output.IsLockedWithKey(publicKeyHash) {
 				UnspentTransactionsOutputs = append(UnspentTransactionsOutputs, output)
 			}
 		}
@@ -292,4 +294,78 @@ func (blockChain *BlockChain) FindUnspentTransactionOutputs(address string) []Tx
 
 	// Return the unspent transactions outputs
 	return UnspentTransactionsOutputs
+}
+
+// FindTransaction function to find a transaction in the blockchain
+func (blockChain *BlockChain) FindTransaction(ID []byte) (Transaction, error) {
+	// Initialize variables
+	var (
+		iterator = blockChain.Iterator()
+	)
+
+	// Iterate over the blocks in the blockchain
+	for {
+		block := iterator.Next()
+
+		// Iterate over the transactions in the block
+		for _, transaction := range block.Transactions {
+			if bytes.Compare(transaction.ID, ID) == 0 {
+				return *transaction, nil
+			}
+		}
+
+		// Break the loop if the previous hash is empty
+		if len(block.PrevHash) == 0 {
+			break
+		}
+	}
+
+	// Return an error if the transaction is not found
+	return Transaction{}, fmt.Errorf("transaction %x not found", ID)
+}
+
+// SignTransaction function to sign a transaction
+func (blockChain *BlockChain) SignTransaction(transaction *Transaction, privateKey ecdsa.PrivateKey) {
+	// Initialize variables
+	var (
+		prevTXs = make(map[string]Transaction)
+	)
+
+	// Iterate over the inputs of the transaction
+	for _, input := range transaction.Inputs {
+		// Get the previous transaction from the blockchain
+		prevTX, err := blockChain.FindTransaction(input.ID)
+
+		// Handle the error
+		Handle(err)
+
+		// Set the previous transaction in the map
+		prevTXs[hex.EncodeToString(prevTX.ID)] = prevTX
+	}
+
+	// Sign the transaction
+	transaction.Sign(privateKey, prevTXs)
+}
+
+// VerifyTransaction function to verify a transaction
+func (blockChain *BlockChain) VerifyTransaction(transaction *Transaction) bool {
+	// Initialize variables
+	var (
+		prevTXs = make(map[string]Transaction)
+	)
+
+	// Iterate over the inputs of the transaction
+	for _, input := range transaction.Inputs {
+		// Get the previous transaction from the blockchain
+		prevTX, err := blockChain.FindTransaction(input.ID)
+
+		// Handle the error
+		Handle(err)
+
+		// Set the previous transaction in the map
+		prevTXs[hex.EncodeToString(prevTX.ID)] = prevTX
+	}
+
+	// Verify the transaction
+	return transaction.Verify(prevTXs)
 }

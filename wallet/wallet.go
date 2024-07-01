@@ -1,6 +1,7 @@
 package wallet
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -20,6 +21,18 @@ const (
 type Wallet struct {
 	PrivateKey ecdsa.PrivateKey
 	PublicKey  []byte
+}
+
+// MakeWallet function to create a new wallet
+func MakeWallet() *Wallet {
+	// Generate a new key pair
+	privateKey, publicKey := NewKeyPair()
+
+	// Create a new wallet with the key pair
+	wallet := Wallet{privateKey, publicKey}
+
+	// Return the wallet
+	return &wallet
 }
 
 // Address function to generate the address of the wallet
@@ -48,6 +61,44 @@ func (wallet Wallet) Address() []byte {
 
 }
 
+// MarshalJSON function to marshal the wallet to JSON
+func (wallet Wallet) MarshalJSON() ([]byte, error) {
+	mapStringAny := map[string]any{
+		"PrivateKey": map[string]any{
+			"D": wallet.PrivateKey.D,
+			"PublicKey": map[string]any{
+				"X": wallet.PrivateKey.PublicKey.X,
+				"Y": wallet.PrivateKey.PublicKey.Y,
+			},
+			"X": wallet.PrivateKey.X,
+			"Y": wallet.PrivateKey.Y,
+		},
+		"PublicKey": wallet.PublicKey,
+	}
+	return json.Marshal(mapStringAny)
+}
+
+// ValidateAddress function to validate an address
+func ValidateAddress(address string) bool {
+	// Decode the address with base58
+	publicKeyHash := Base58Decode([]byte(address))
+
+	// Get the checksum
+	actualChecksum := publicKeyHash[len(publicKeyHash)-checksumLength:]
+
+	// Get the version
+	ver := publicKeyHash[0]
+
+	// Get the publicKeyHash without the checksum
+	publicKeyHash = publicKeyHash[1 : len(publicKeyHash)-checksumLength]
+
+	// Get Target checksum
+	targetChecksum := Checksum(append([]byte{ver}, publicKeyHash...))
+
+	// Compare the checksums and return the result
+	return bytes.Compare(actualChecksum, targetChecksum) == 0
+}
+
 // NewKeyPair function to create a new key pair
 func NewKeyPair() (ecdsa.PrivateKey, []byte) {
 	// Generate a curve which will be used to generate the key pair
@@ -65,18 +116,6 @@ func NewKeyPair() (ecdsa.PrivateKey, []byte) {
 
 	// Return the privateKey key and the publicKey key
 	return *privateKey, publicKey
-}
-
-// MakeWallet function to create a new wallet
-func MakeWallet() *Wallet {
-	// Generate a new key pair
-	privateKey, publicKey := NewKeyPair()
-
-	// Create a new wallet with the key pair
-	wallet := Wallet{privateKey, publicKey}
-
-	// Return the wallet
-	return &wallet
 }
 
 // PublicKeyHash function to generate the public key hash
@@ -112,20 +151,4 @@ func Checksum(payload []byte) []byte {
 
 	// Return the first four bytes of the second checksum
 	return secondChecksum[:checksumLength]
-}
-
-func (wallet Wallet) MarshalJSON() ([]byte, error) {
-	mapStringAny := map[string]any{
-		"PrivateKey": map[string]any{
-			"D": wallet.PrivateKey.D,
-			"PublicKey": map[string]any{
-				"X": wallet.PrivateKey.PublicKey.X,
-				"Y": wallet.PrivateKey.PublicKey.Y,
-			},
-			"X": wallet.PrivateKey.X,
-			"Y": wallet.PrivateKey.Y,
-		},
-		"PublicKey": wallet.PublicKey,
-	}
-	return json.Marshal(mapStringAny)
 }
