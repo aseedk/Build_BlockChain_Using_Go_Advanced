@@ -8,15 +8,6 @@ type BlockChainIterator struct {
 	Database    *badger.DB
 }
 
-// Iterator method to create a new iterator for the blockchain
-func (blockChain *BlockChain) Iterator() *BlockChainIterator {
-	// Create a new iterator with the last hash and the database
-	iterator := &BlockChainIterator{blockChain.LastHash, blockChain.Database}
-
-	// Return the iterator
-	return iterator
-}
-
 // Next method to move to the next block in the blockchain
 func (iterator *BlockChainIterator) Next() *Block {
 	var (

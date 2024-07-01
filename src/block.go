@@ -2,7 +2,6 @@ package src
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/gob"
 )
 
@@ -12,6 +11,11 @@ type Block struct {
 	Transactions []*Transaction
 	PrevHash     []byte
 	Nonce        int
+}
+
+// CreateGenesisBlock function to create the first block in the blockchain
+func CreateGenesisBlock(coinbase *Transaction) *Block {
+	return CreateBlock([]*Transaction{coinbase}, []byte{})
 }
 
 // CreateBlock function to create a new block in the blockchain
@@ -33,18 +37,17 @@ func CreateBlock(transactions []*Transaction, prevHash []byte) *Block {
 func (b *Block) HashTransactions() []byte {
 	// Initialize a new bytes buffer
 	var transactionsHashes [][]byte
-	var transactionHash [32]byte
 
 	// Iterate over the transactions in the block
 	for _, transaction := range b.Transactions {
-		transactionsHashes = append(transactionsHashes, transaction.ID)
+		transactionsHashes = append(transactionsHashes, transaction.Serialize())
 	}
 
 	// Create a new hash with the hashes of the transactions
-	transactionHash = sha256.Sum256(bytes.Join(transactionsHashes, []byte{}))
+	tree := NewMerkleTree(transactionsHashes)
 
 	// Return the hash of the transactions
-	return transactionHash[:]
+	return tree.RootNode.Data
 }
 
 // Serialize function to serialize the block

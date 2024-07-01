@@ -22,26 +22,6 @@ type Transaction struct {
 	Outputs []TxOutput // Outputs of the transaction
 }
 
-// SetID function to set the ID of the transaction
-func (tx *Transaction) SetID() {
-	// Initialize a new bytes buffer and a hash
-	var encoded bytes.Buffer
-	var hash [32]byte
-
-	// Create a new gob encoder with the bytes buffer
-	encoder := gob.NewEncoder(&encoded)
-
-	// Encode the transaction
-	err := encoder.Encode(tx)
-	Handle(err)
-
-	// Calculate the hash of the encoded transaction
-	hash = sha256.Sum256(encoded.Bytes())
-
-	// Set the ID of the transaction to the hash
-	tx.ID = hash[:]
-}
-
 // IsCoinbase function to check if the transaction is a coinbase transaction
 func (tx *Transaction) IsCoinbase() bool {
 	// Check if the transaction has only one input and the ID of the input is empty
@@ -83,15 +63,15 @@ func (tx *Transaction) Sign(privateKey ecdsa.PrivateKey, prevTXs map[string]Tran
 	if tx.IsCoinbase() {
 		return
 	}
-
+	fmt.Println(tx.Inputs)
 	// Iterate over the inputs of the transaction
 	for _, in := range tx.Inputs {
 		// Check if the previous transaction is not in the map
 		if prevTXs[hex.EncodeToString(in.ID)].ID == nil {
+
 			log.Panic("Error: Previous transaction is not correct")
 		}
 	}
-
 	// Initialize a new transaction copy
 	txCopy := tx.TrimmedCopy()
 
@@ -295,14 +275,17 @@ func NewTransaction(from, to string, amount int, UTXO *UTXOSet) *Transaction {
 func CoinbaseTransaction(to, data string) *Transaction {
 	// If the data is empty, set it to the to address
 	if data == "" {
-		data = fmt.Sprintf("Reward to '%s'", to)
+		randData := make([]byte, 24)
+		_, err := rand.Read(randData)
+		Handle(err)
+		data = fmt.Sprintf("%x", randData)
 	}
 
 	// Create a new transaction with the provided data
 	transactionIn := TxInput{[]byte{}, -1, nil, []byte(data)}
-	transactionOut := NewTxOutput(100, to)
+	transactionOut := NewTxOutput(20, to)
 	tx := Transaction{nil, []TxInput{transactionIn}, []TxOutput{*transactionOut}}
-	tx.SetID()
+	tx.ID = tx.Hash()
 
 	// Return the transaction
 	return &tx

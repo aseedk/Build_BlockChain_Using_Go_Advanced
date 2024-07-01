@@ -80,11 +80,12 @@ func (cli *CommandLine) CreateBlockChain(address string) {
 	}
 
 	blockchain := src.InitBlockChain(address)
-	err := blockchain.Database.Close()
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+	defer func(Database *badger.DB) {
+		err := Database.Close()
+		if err != nil {
+			fmt.Println(err)
+		}
+	}(blockchain.Database)
 
 	UTXOSet := src.UTXOSet{Blockchain: blockchain}
 	UTXOSet.Reindex()
@@ -128,6 +129,16 @@ func (cli *CommandLine) PrintChain() {
 
 // Send function to send coins from one address to another
 func (cli *CommandLine) Send(from, to string, amount int) {
+	if !wallet.ValidateAddress(from) {
+		fmt.Println("Address is not valid")
+		runtime.Goexit()
+	}
+
+	if !wallet.ValidateAddress(to) {
+		fmt.Println("Address is not valid")
+		runtime.Goexit()
+	}
+
 	blockchain := src.ContinueBlockChain(from)
 	UTXOSet := src.UTXOSet{Blockchain: blockchain}
 	defer func(Database *badger.DB) {
@@ -137,8 +148,8 @@ func (cli *CommandLine) Send(from, to string, amount int) {
 		}
 	}(blockchain.Database)
 	tx := src.NewTransaction(from, to, amount, &UTXOSet)
-
-	block := blockchain.AddBlock([]*src.Transaction{tx})
+	cbTx := src.CoinbaseTransaction(from, "")
+	block := blockchain.AddBlock([]*src.Transaction{cbTx, tx})
 	UTXOSet.Update(block)
 	fmt.Println("Success!")
 }

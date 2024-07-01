@@ -91,7 +91,6 @@ func ContinueBlockChain(_ string) *BlockChain {
 		db       *badger.DB
 		item     *badger.Item
 		opts     badger.Options
-		val      []byte
 		err      error
 	)
 
@@ -119,12 +118,10 @@ func ContinueBlockChain(_ string) *BlockChain {
 		Handle(err)
 
 		// Set the last hash to the hash of the last block
-		val, err = item.Value()
+		lastHash, err = item.Value()
 
 		// Handle the error
 		Handle(err)
-
-		lastHash = append([]byte{}, val...)
 
 		// Return err if any
 		return err
@@ -140,16 +137,10 @@ func ContinueBlockChain(_ string) *BlockChain {
 	return &blockchain
 }
 
-// CreateGenesisBlock function to create the first block in the blockchain
-func CreateGenesisBlock(coinbase *Transaction) *Block {
-	return CreateBlock([]*Transaction{coinbase}, []byte{})
-}
-
 // AddBlock method to add a new block to the blockchain
 func (blockChain *BlockChain) AddBlock(transactions []*Transaction) *Block {
 	var (
 		lastHash []byte
-		val      []byte
 		item     *badger.Item
 		err      error
 	)
@@ -163,12 +154,7 @@ func (blockChain *BlockChain) AddBlock(transactions []*Transaction) *Block {
 		Handle(err)
 
 		// set the last hash to the hash of the last block
-		val, err = item.Value()
-
-		// Handle the error
-		Handle(err)
-
-		lastHash = append([]byte{}, val...)
+		lastHash, err = item.Value()
 
 		// return err if any
 		return err
@@ -299,6 +285,10 @@ func (blockChain *BlockChain) SignTransaction(transaction *Transaction, privateK
 
 // VerifyTransaction function to verify a transaction
 func (blockChain *BlockChain) VerifyTransaction(transaction *Transaction) bool {
+	if transaction.IsCoinbase() {
+		return true
+	}
+
 	// Initialize variables
 	var (
 		prevTXs = make(map[string]Transaction)
@@ -318,4 +308,13 @@ func (blockChain *BlockChain) VerifyTransaction(transaction *Transaction) bool {
 
 	// Verify the transaction
 	return transaction.Verify(prevTXs)
+}
+
+// Iterator method to create a new iterator for the blockchain
+func (blockChain *BlockChain) Iterator() *BlockChainIterator {
+	// Create a new iterator with the last hash and the database
+	iterator := &BlockChainIterator{blockChain.LastHash, blockChain.Database}
+
+	// Return the iterator
+	return iterator
 }
