@@ -1,16 +1,20 @@
 module Build_BlockChain_Using_Go_Advanced
 
-go 1.21
+go 1.18
 
-require github.com/dgraph-io/badger v1.6.2
+require (
+	github.com/dgraph-io/badger v1.5.4
+	github.com/mr-tron/base58 v1.2.0
+	golang.org/x/crypto v0.24.0
+)
 
 require (
 	github.com/AndreasBriese/bbloom v0.0.0-20190825152654-46b345b51c96 // indirect
-	github.com/cespare/xxhash v1.1.0 // indirect
-	github.com/dgraph-io/ristretto v0.0.2 // indirect
-	github.com/dustin/go-humanize v1.0.0 // indirect
-	github.com/golang/protobuf v1.3.1 // indirect
-	github.com/pkg/errors v0.8.1 // indirect
-	golang.org/x/net v0.0.0-20190620200207-3b0461eec859 // indirect
-	golang.org/x/sys v0.0.0-20190626221950-04f50cda93cb // indirect
+	github.com/dgryski/go-farm v0.0.0-20180109070241-2de33835d102 // indirect
+	github.com/golang/protobuf v1.2.0 // indirect
+	github.com/pkg/errors v0.8.0 // indirect
+	github.com/stretchr/testify v1.9.0 // indirect
+	golang.org/x/net v0.21.0 // indirect
+	golang.org/x/sync v0.7.0 // indirect
+	golang.org/x/sys v0.21.0 // indirect
 )

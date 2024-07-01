@@ -16,19 +16,6 @@ type Transaction struct {
 	Outputs []TxOutput // Outputs of the transaction
 }
 
-// TxOutput struct which contains the value and the public key of the input
-type TxOutput struct {
-	Value     int    // Value of the output
-	PublicKey string // Public key of the output
-}
-
-// TxInput struct which contains the ID of the transaction, the output and the signature
-type TxInput struct {
-	ID        []byte // ID of the transaction
-	Out       int    // Output of the transaction
-	Signature string // Signature of the transaction
-}
-
 // CoinbaseTransaction function to create a new coinbase transaction
 func CoinbaseTransaction(to, data string) *Transaction {
 	// If the data is empty, set it to the to address
@@ -106,16 +93,4 @@ func NewTransaction(from, to string, amount int, blockchain *BlockChain) *Transa
 func (tx *Transaction) IsCoinbase() bool {
 	// Check if the transaction has only one input and the ID of the input is empty
 	return len(tx.Inputs) == 1 && len(tx.Inputs[0].ID) == 0 && tx.Inputs[0].Out == -1
-}
-
-// CanUnlock function to check if the transaction can be unlocked with the provided data
-func (in *TxInput) CanUnlock(data string) bool {
-	// Check if the signature of the input is equal to the data
-	return in.Signature == data
-}
-
-// CanBeUnlocked function to check if the transaction can be unlocked with the provided data
-func (out *TxOutput) CanBeUnlocked(data string) bool {
-	// Check if the public key of the output is equal to the data
-	return out.PublicKey == data
 }

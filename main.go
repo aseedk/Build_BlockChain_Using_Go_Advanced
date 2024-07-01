@@ -1,12 +1,12 @@
 package main
 
 import (
-	"Build_BlockChain_Using_Go_Advanced/src"
+	"Build_BlockChain_Using_Go_Advanced/cli"
 	"os"
 )
 
 func main() {
 	defer os.Exit(0)
-	cli := src.CommandLine{}
-	cli.Run()
+	commandLine := cli.CommandLine{}
+	commandLine.Run()
 }

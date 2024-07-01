@@ -36,9 +36,10 @@ func InitBlockChain(address string) *BlockChain {
 	}
 
 	// Set the options for the badger database
-	opts = badger.DefaultOptions(dbPath)
+	opts = badger.DefaultOptions
 	opts.Dir = dbPath
 	opts.ValueDir = dbPath
+
 	// Open the badger database
 	db, err = badger.Open(opts)
 
@@ -88,6 +89,7 @@ func ContinueBlockChain(_ string) *BlockChain {
 		db       *badger.DB
 		item     *badger.Item
 		opts     badger.Options
+		val      []byte
 		err      error
 	)
 
@@ -96,10 +98,9 @@ func ContinueBlockChain(_ string) *BlockChain {
 	}
 
 	// Set the options for the badger database
-	opts = badger.DefaultOptions(dbPath)
+	opts = badger.DefaultOptions
 	opts.Dir = dbPath
 	opts.ValueDir = dbPath
-	opts.Logger = nil
 
 	// Open the badger database
 	db, err = badger.Open(opts)
@@ -116,10 +117,12 @@ func ContinueBlockChain(_ string) *BlockChain {
 		Handle(err)
 
 		// Set the last hash to the hash of the last block
-		err = item.Value(func(val []byte) error {
-			lastHash = append([]byte{}, val...)
-			return nil
-		})
+		val, err = item.Value()
+
+		// Handle the error
+		Handle(err)
+
+		lastHash = append([]byte{}, val...)
 
 		// Return err if any
 		return err
@@ -144,6 +147,7 @@ func CreateGenesisBlock(coinbase *Transaction) *Block {
 func (blockChain *BlockChain) AddBlock(transactions []*Transaction) {
 	var (
 		lastHash []byte
+		val      []byte
 		item     *badger.Item
 		err      error
 	)
@@ -157,10 +161,12 @@ func (blockChain *BlockChain) AddBlock(transactions []*Transaction) {
 		Handle(err)
 
 		// set the last hash to the hash of the last block
-		err = item.Value(func(val []byte) error {
-			lastHash = append([]byte{}, val...)
-			return nil
-		})
+		val, err = item.Value()
+
+		// Handle the error
+		Handle(err)
+
+		lastHash = append([]byte{}, val...)
 
 		// return err if any
 		return err
@@ -286,55 +292,4 @@ func (blockChain *BlockChain) FindUnspentTransactionOutputs(address string) []Tx
 
 	// Return the unspent transactions outputs
 	return UnspentTransactionsOutputs
-}
-
-// BlockChainIterator struct to iterate over the blockchain
-type BlockChainIterator struct {
-	CurrentHash []byte
-	Database    *badger.DB
-}
-
-// Iterator method to create a new iterator for the blockchain
-func (blockChain *BlockChain) Iterator() *BlockChainIterator {
-	// Create a new iterator with the last hash and the database
-	iterator := &BlockChainIterator{blockChain.LastHash, blockChain.Database}
-
-	// Return the iterator
-	return iterator
-}
-
-// Next method to move to the next block in the blockchain
-func (iterator *BlockChainIterator) Next() *Block {
-	var (
-		block *Block
-		item  *badger.Item
-		err   error
-	)
-
-	// Read the block from the database
-	err = iterator.Database.View(func(txn *badger.Txn) error {
-		// Get the block from the database
-		item, err = txn.Get(iterator.CurrentHash)
-
-		// Handle the error
-		Handle(err)
-
-		// Decode the block from the database
-		err = item.Value(func(val []byte) error {
-			block = Deserialize(val)
-			return nil
-		})
-
-		// return err if any
-		return err
-	})
-
-	// Handle the error
-	Handle(err)
-
-	// Move to the previous block
-	iterator.CurrentHash = block.PrevHash
-
-	// Return the block
-	return block
 }
